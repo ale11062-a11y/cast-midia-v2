@@ -1,0 +1,416 @@
+import React, { useState } from 'react';
+import { Tv, KeyRound, ArrowRight, Monitor, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { api, setStoredToken } from '../lib/api';
+import { User, Player } from '../types';
+
+interface LoginViewProps {
+  onLoginSuccess: (data: { user: User; company?: { id: string; name: string }; player?: Player }) => void;
+  showToast: (type: 'success' | 'error' | 'info', message: string) => void;
+}
+
+export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, showToast }) => {
+  const [mode, setMode] = useState<'standard' | 'player_code'>('standard');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [playerCode, setPlayerCode] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  // Forgot password modal
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState('');
+
+  // Mandatory password change modal
+  const [mustChangeUser, setMustChangeUser] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changeLoading, setChangeLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setLoading(true);
+
+    try {
+      const payload = mode === 'standard' ? { email, password } : { playerCode };
+      const res = await api.login(payload);
+
+      setStoredToken(res.token);
+
+      if (res.user.must_change_password) {
+        setMustChangeUser(res.user);
+        setLoading(false);
+        return;
+      }
+
+      showToast('success', `Bem-vindo(a), ${res.user.name}!`);
+      onLoginSuccess(res);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao efetuar login.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMandatoryPasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      setErrorMessage('A nova senha deve possuir no mínimo 6 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setErrorMessage('A confirmação de senha não confere.');
+      return;
+    }
+
+    setChangeLoading(true);
+    setErrorMessage('');
+
+    try {
+      await api.changePassword(newPassword);
+      showToast('success', 'Senha redefinida com sucesso!');
+      if (mustChangeUser) {
+        const updatedUser = { ...mustChangeUser, must_change_password: false };
+        onLoginSuccess({ user: updatedUser });
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao alterar senha.');
+    } finally {
+      setChangeLoading(false);
+    }
+  };
+
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail) return;
+    try {
+      const res = await api.forgotPassword(forgotEmail);
+      setForgotSuccess(res.message);
+    } catch (err: any) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // Quick helper to fill test accounts
+  const fillCredentials = (role: 'admin' | 'company' | 'operator' | 'player') => {
+    setMode('standard');
+    setErrorMessage('');
+    if (role === 'admin') {
+      setEmail('ale11062@gmail.com');
+      setPassword('Admin@123456');
+    } else if (role === 'company') {
+      setEmail('empresa@drogariasp.com.br');
+      setPassword('123456');
+    } else if (role === 'operator') {
+      setEmail('operador@drogariasp.com.br');
+      setPassword('123456');
+    } else if (role === 'player') {
+      setEmail('player1@drogariasp.com.br');
+      setPassword('123456');
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen flex-col justify-center items-center px-4 py-12 sm:px-6 lg:px-8 bg-slate-900">
+      <div className="w-full max-w-md space-y-6">
+        {/* Header */}
+        <div className="text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-900/50">
+            <Tv className="h-7 w-7" />
+          </div>
+          <h1 className="mt-4 text-2xl font-bold tracking-tight text-white uppercase sm:text-3xl">MÍDIA INDOOR</h1>
+          <p className="mt-1 text-xs tracking-wider text-slate-400 uppercase">Sistema de Gestão e Reprodução de Mídia</p>
+        </div>
+
+        {/* Login Box */}
+        <div className="rounded-2xl border border-slate-700 bg-slate-800 p-8 shadow-2xl">
+          {errorMessage && (
+            <div className="mb-5 flex items-center gap-2.5 rounded-lg border border-rose-800/80 bg-rose-950/40 p-3 text-xs font-medium text-rose-300">
+              <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Mode Selector */}
+          <div className="mb-6 flex rounded-lg bg-slate-900 p-1 text-xs font-bold uppercase tracking-wider border border-slate-700">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('standard');
+                setErrorMessage('');
+              }}
+              className={`flex-1 rounded-md py-2 text-center transition cursor-pointer ${
+                mode === 'standard' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Acesso por E-mail
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('player_code');
+                setErrorMessage('');
+              }}
+              className={`flex-1 rounded-md py-2 text-center transition cursor-pointer ${
+                mode === 'player_code' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Código do Player (TV)
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {mode === 'standard' ? (
+              <>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">E-mail</label>
+                  <input
+                    id="input-login-email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="seu.email@empresa.com"
+                    className="mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900 px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Senha</label>
+                    <button
+                      id="btn-forgot-password"
+                      type="button"
+                      onClick={() => {
+                        setForgotOpen(true);
+                        setForgotSuccess('');
+                        setForgotEmail(email);
+                      }}
+                      className="text-xs text-blue-400 hover:text-blue-300 font-semibold cursor-pointer"
+                    >
+                      Esqueci minha senha
+                    </button>
+                  </div>
+                  <input
+                    id="input-login-password"
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900 px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Código de Ativação do Player</label>
+                <div className="relative mt-1.5">
+                  <input
+                    id="input-player-code"
+                    type="text"
+                    required
+                    value={playerCode}
+                    onChange={(e) => setPlayerCode(e.target.value.toUpperCase())}
+                    placeholder="EX: PLAY-REC-01"
+                    className="block w-full rounded-lg border border-slate-700 bg-slate-900 px-3.5 py-3 text-base uppercase font-mono tracking-wider text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                  />
+                  <Monitor className="absolute right-3.5 top-3.5 h-5 w-5 text-slate-500" />
+                </div>
+                <p className="mt-1.5 text-xs text-slate-400">
+                  Insira o código único cadastrado no painel da empresa para iniciar a reprodução.
+                </p>
+              </div>
+            )}
+
+            <button
+              id="btn-login-submit"
+              type="submit"
+              disabled={loading}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md hover:bg-blue-500 focus:outline-none transition cursor-pointer disabled:opacity-50"
+            >
+              {loading ? (
+                <span>Entrando...</span>
+              ) : (
+                <>
+                  <span>Entrar</span>
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Quick Demo Credentials */}
+          <div className="mt-8 border-t border-slate-700 pt-5">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2.5 text-center">
+              Acesso Rápido para Testes
+            </p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => fillCredentials('admin')}
+                className="flex items-center justify-center p-2.5 rounded-lg border border-slate-700 bg-slate-900/80 hover:bg-slate-700 hover:border-slate-600 text-slate-300 font-bold uppercase text-[10px] tracking-wider transition cursor-pointer"
+              >
+                1. Admin Geral
+              </button>
+              <button
+                type="button"
+                onClick={() => fillCredentials('company')}
+                className="flex items-center justify-center p-2.5 rounded-lg border border-slate-700 bg-slate-900/80 hover:bg-slate-700 hover:border-slate-600 text-slate-300 font-bold uppercase text-[10px] tracking-wider transition cursor-pointer"
+              >
+                2. Empresa
+              </button>
+              <button
+                type="button"
+                onClick={() => fillCredentials('operator')}
+                className="flex items-center justify-center p-2.5 rounded-lg border border-slate-700 bg-slate-900/80 hover:bg-slate-700 hover:border-slate-600 text-slate-300 font-bold uppercase text-[10px] tracking-wider transition cursor-pointer"
+              >
+                3. Operador
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('player_code');
+                  setPlayerCode('PLAY-REC-01');
+                }}
+                className="flex items-center justify-center p-2.5 rounded-lg border border-slate-700 bg-slate-900/80 hover:bg-slate-700 hover:border-slate-600 text-slate-300 font-bold uppercase text-[10px] tracking-wider transition cursor-pointer"
+              >
+                4. Player (TV)
+              </button>
+            </div>
+            <div className="mt-3 p-2 rounded-lg bg-slate-900/60 border border-slate-700/60 text-center">
+              <p className="text-[11px] text-slate-300 font-mono">
+                Admin: <span className="text-blue-400 font-bold">ale11062@gmail.com</span> (ou <span className="text-blue-400 font-bold">admin</span>)
+              </p>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                Senha redefinida: <span className="text-emerald-400 font-bold">Admin@123456</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mandatory Password Change Modal (First Access) */}
+      {mustChangeUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-800 p-6 shadow-2xl text-slate-100">
+            <div className="flex items-center gap-3 border-b border-slate-700 pb-3 mb-4">
+              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-white">Primeiro Acesso: Alteração de Senha</h3>
+                <p className="text-xs text-slate-400">Por segurança, é obrigatório definir uma nova senha pessoal.</p>
+              </div>
+            </div>
+
+            {errorMessage && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-rose-800 bg-rose-950/40 p-3 text-xs text-rose-300">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleMandatoryPasswordChange} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Nova Senha</label>
+                <input
+                  id="input-change-new-password"
+                  type="password"
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Confirme a Nova Senha</label>
+                <input
+                  id="input-change-confirm-password"
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repita a nova senha"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-slate-700">
+                <button
+                  id="btn-save-new-password"
+                  type="submit"
+                  disabled={changeLoading}
+                  className="w-full rounded-lg bg-blue-600 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-blue-500 shadow-sm transition cursor-pointer disabled:opacity-50"
+                >
+                  {changeLoading ? 'Salvando...' : 'Salvar Nova Senha e Continuar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Forgot Password Modal */}
+      {forgotOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-800 p-6 shadow-2xl text-slate-100">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-white border-b border-slate-700 pb-3 mb-2">Recuperar Senha</h3>
+            <p className="text-xs text-slate-400 mb-4">
+              Informe seu e-mail cadastrado para receber as orientações de redefinição de acesso.
+            </p>
+
+            {forgotSuccess ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-800 bg-emerald-950/40 p-3 text-xs text-emerald-300">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+                  <span>{forgotSuccess}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setForgotOpen(false)}
+                  className="w-full rounded-lg bg-slate-700 py-2 text-xs font-bold uppercase tracking-wider text-slate-200 hover:bg-slate-600 transition cursor-pointer"
+                >
+                  Voltar ao Login
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">E-mail</label>
+                  <input
+                    type="email"
+                    required
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    placeholder="seu.email@empresa.com"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setForgotOpen(false)}
+                    className="px-4 py-2 rounded-lg border border-slate-600 bg-slate-700 text-xs font-bold uppercase tracking-wider text-slate-300 hover:text-white hover:bg-slate-600 transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-xs font-bold uppercase tracking-wider text-white hover:bg-blue-500 shadow-sm transition cursor-pointer"
+                  >
+                    Enviar Instruções
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

@@ -1,0 +1,6 @@
+{
+  "name": "Mídia Indoor",
+  "description": "Sistema completo de gerenciamento e exibição de mídia indoor com PWA, playlists, operadores e chamadas em tempo real nos players.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
